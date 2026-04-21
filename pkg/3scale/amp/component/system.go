@@ -14,6 +14,7 @@ import (
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/utils/ptr"
 
 	"github.com/3scale/3scale-operator/apis/apps"
 	"github.com/3scale/3scale-operator/pkg/helper"
@@ -594,6 +595,7 @@ func (system *System) appPodVolumes() []v1.Volume {
 							Path: "tls.key", // Map the secret key to the tls.key file in the container
 						},
 					},
+					DefaultMode: ptr.To(v1.SecretVolumeSourceDefaultMode),
 				},
 			},
 		}
@@ -624,6 +626,7 @@ func (system *System) appPodVolumes() []v1.Volume {
 							},
 						},
 					},
+					DefaultMode: ptr.To(v1.ProjectedVolumeSourceDefaultMode),
 				},
 			},
 		}
@@ -988,6 +991,7 @@ func (system *System) SidekiqPodVolumes() []v1.Volume {
 							Path: "tls.key", // Map the secret key to the tls.key file in the container
 						},
 					},
+					DefaultMode: ptr.To(v1.SecretVolumeSourceDefaultMode),
 				},
 			},
 		}
@@ -1015,6 +1019,7 @@ func (system *System) SidekiqPodVolumes() []v1.Volume {
 							},
 						},
 					},
+					DefaultMode: ptr.To(v1.ProjectedVolumeSourceDefaultMode),
 				},
 			},
 		}
@@ -1505,6 +1510,9 @@ func (system *System) systemInit(containerImage string) []v1.Container {
 					"-c",
 					"cp /tls/* /writable-tls/ && chmod 0600 /writable-tls/*",
 				},
+				ImagePullPolicy:          v1.PullIfNotPresent,
+				TerminationMessagePath:   v1.TerminationMessagePathDefault,
+				TerminationMessagePolicy: v1.TerminationMessageReadFile,
 				VolumeMounts: []v1.VolumeMount{
 					{
 						Name:      "tls-secret",
@@ -1535,7 +1543,10 @@ func (system *System) sidekiqInit(containerImage string) []v1.Container {
 			"-c",
 			"bundle exec sh -c \"until rake boot:redis && curl --output /dev/null --silent --fail --head http://system-master:3000/status; do sleep $SLEEP_SECONDS; done\"",
 		},
-		Env: append(system.SystemRedisEnvVars(), helper.EnvVarFromValue("SLEEP_SECONDS", "1")),
+		Env:                      append(system.SystemRedisEnvVars(), helper.EnvVarFromValue("SLEEP_SECONDS", "1")),
+		ImagePullPolicy:          v1.PullIfNotPresent,
+		TerminationMessagePath:   v1.TerminationMessagePathDefault,
+		TerminationMessagePolicy: v1.TerminationMessageReadFile,
 	}
 
 	// Append Redis TLS volume mounts if Redis TLS is enabled
@@ -1552,6 +1563,9 @@ func (system *System) sidekiqInit(containerImage string) []v1.Container {
 				"-c",
 				"cp /tls/* /writable-tls/ && chmod 0600 /writable-tls/*",
 			},
+			ImagePullPolicy:          v1.PullIfNotPresent,
+			TerminationMessagePath:   v1.TerminationMessagePathDefault,
+			TerminationMessagePolicy: v1.TerminationMessageReadFile,
 			VolumeMounts: []v1.VolumeMount{
 				{
 					Name:      "tls-secret",
@@ -1683,8 +1697,9 @@ func (system *System) redisTLSVolumes() []v1.Volume {
 			Name: "system-redis-tls",
 			VolumeSource: v1.VolumeSource{
 				Secret: &v1.SecretVolumeSource{
-					SecretName: SystemSecretSystemRedisSecretName,
-					Items:      items,
+					SecretName:  SystemSecretSystemRedisSecretName,
+					Items:       items,
+					DefaultMode: ptr.To(v1.SecretVolumeSourceDefaultMode),
 				},
 			},
 		}
@@ -1704,8 +1719,9 @@ func (system *System) redisTLSVolumes() []v1.Volume {
 			Name: "backend-redis-tls",
 			VolumeSource: v1.VolumeSource{
 				Secret: &v1.SecretVolumeSource{
-					SecretName: BackendSecretBackendRedisSecretName,
-					Items:      items,
+					SecretName:  BackendSecretBackendRedisSecretName,
+					Items:       items,
+					DefaultMode: ptr.To(v1.SecretVolumeSourceDefaultMode),
 				},
 			},
 		}

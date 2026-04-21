@@ -101,7 +101,10 @@ func (s *SystemSearchd) Deployment(ctx context.Context, k8sclient client.Client,
 									},
 								},
 								InitialDelaySeconds: 60,
+								TimeoutSeconds:      1,
 								PeriodSeconds:       10,
+								SuccessThreshold:    1,
+								FailureThreshold:    3,
 							},
 							ReadinessProbe: &v1.Probe{
 								ProbeHandler: v1.ProbeHandler{
