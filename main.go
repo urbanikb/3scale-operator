@@ -29,6 +29,7 @@ import (
 	capabilitiesv1beta1 "github.com/3scale/3scale-operator/apis/capabilities/v1beta1"
 	appscontroller "github.com/3scale/3scale-operator/controllers/apps"
 	capabilitiescontroller "github.com/3scale/3scale-operator/controllers/capabilities"
+	configurationcontroller "github.com/3scale/3scale-operator/controllers/configuration"
 	"github.com/3scale/3scale-operator/pkg/reconcilers"
 	"github.com/3scale/3scale-operator/version"
 	grafanav1alpha1 "github.com/grafana-operator/grafana-operator/v4/api/integreatly/v1alpha1"
@@ -157,6 +158,16 @@ func main() {
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
+		os.Exit(1)
+	}
+
+	watcher := &configurationcontroller.CABundleWatcher{
+		Client:    mgr.GetClient(),
+		Recorder:  mgr.GetEventRecorderFor("CABundleWatcher"),
+		Namespace: operatorInstallationNamespace,
+	}
+	if err = watcher.SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "CABundleWatcher")
 		os.Exit(1)
 	}
 

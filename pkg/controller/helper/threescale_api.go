@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 
+	configuration "github.com/3scale/3scale-operator/controllers/configuration"
 	"github.com/3scale/3scale-operator/pkg/helper"
 
 	threescaleapi "github.com/3scale/3scale-porta-go-client/client"
@@ -19,12 +20,15 @@ type ProviderAccount struct {
 	Token       string
 }
 
-// PortaClient instantiates porta_client.ThreeScaleClient from ProviderAccount object
+// PortaClient instantiates a ThreeScaleClient from a ProviderAccount.
+// When insecureSkipVerify is true, the CA bundle is ignored and an insecure
+// client is used instead.
 func PortaClient(providerAccount *ProviderAccount, insecureSkipVerify bool) (*threescaleapi.ThreeScaleClient, error) {
 	return PortaClientFromURLString(providerAccount.AdminURLStr, providerAccount.Token, insecureSkipVerify)
 }
 
-// PortaClientFromURLString instantiates porta_client.ThreeScaleClient from url string
+// PortaClientFromURLString instantiates a ThreeScaleClient from an admin URL string
+// and access token.  When insecureSkipVerify is true, the CA bundle is ignored.
 func PortaClientFromURLString(adminURLStr, token string, insecureSkipVerify bool) (*threescaleapi.ThreeScaleClient, error) {
 	adminURL, err := url.Parse(adminURLStr)
 	if err != nil {
@@ -33,19 +37,22 @@ func PortaClientFromURLString(adminURLStr, token string, insecureSkipVerify bool
 	return PortaClientFromURL(adminURL, token, insecureSkipVerify)
 }
 
-// PortaClientFromURL instantiates porta_client.ThreeScaleClient from admin url object
+// PortaClientFromURL instantiates a ThreeScaleClient from an admin URL
+// and access token.  When insecureSkipVerify is true, certificate verification
+// is disabled regardless of the configured CA bundle.
+// Note: Callers must re-create the client on each reconcile cycle to pick up CA rotations.
 func PortaClientFromURL(url *url.URL, token string, insecureSkipVerify bool) (*threescaleapi.ThreeScaleClient, error) {
 	adminPortal, err := threescaleapi.NewAdminPortal(url.Scheme, url.Hostname(), helper.PortFromURL(url))
 	if err != nil {
 		return nil, err
 	}
-
-	// Activated by some env var or Spec param
 	var transport http.RoundTripper = &http.Transport{
-		Proxy:           http.ProxyFromEnvironment,
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: insecureSkipVerify},
+		Proxy: http.ProxyFromEnvironment,
+		TLSClientConfig: &tls.Config{ //nolint:gosec // G402: InsecureSkipVerify is intentional and user-controlled
+			RootCAs:            configuration.GetRootCAs(),
+			InsecureSkipVerify: insecureSkipVerify,
+		},
 	}
-
 	if helper.GetEnvVar(HTTP_VERBOSE_ENVVAR, "0") == "1" {
 		transport = &helper.Transport{Transport: transport}
 	}
