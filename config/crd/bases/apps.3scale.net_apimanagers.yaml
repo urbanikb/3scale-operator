@@ -41,6 +41,18 @@ spec:
             properties:
               apicast:
                 properties:
+                  customCABundleConfigMapRef:
+                    description: |-
+                      LocalObjectReference contains enough information to let you locate the
+                      referenced object inside the same namespace.
+                    properties:
+                      name:
+                        description: |-
+                          Name of the referent.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                    type: object
+                    x-kubernetes-map-type: atomic
                   image:
                     type: string
                   managementAPI:
@@ -8856,6 +8868,18 @@ spec:
                           type: object
                         type: array
                     type: object
+                  customCABundleConfigMapRef:
+                    description: |-
+                      LocalObjectReference contains enough information to let you locate the
+                      referenced object inside the same namespace.
+                    properties:
+                      name:
+                        description: |-
+                          Name of the referent.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                    type: object
+                    x-kubernetes-map-type: atomic
                   database:
                     properties:
                       mysql:
@@ -18474,6 +18498,18 @@ spec:
                           type: object
                         type: array
                     type: object
+                  customCABundleConfigMapRef:
+                    description: |-
+                      LocalObjectReference contains enough information to let you locate the
+                      referenced object inside the same namespace.
+                    properties:
+                      name:
+                        description: |-
+                          Name of the referent.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                    type: object
+                    x-kubernetes-map-type: atomic
                   databaseAffinity:
                     description: Affinity is a group of affinity scheduling rules.
                     properties:

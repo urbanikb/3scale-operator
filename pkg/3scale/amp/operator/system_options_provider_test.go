@@ -2,6 +2,7 @@ package operator
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/3scale/3scale-operator/apis/apps"
@@ -950,6 +951,70 @@ func TestGetSystemOptionsProvider_RedisTLS(t *testing.T) {
 				subT.Fatal(err)
 			}
 			tc.validateOptions(subT, opts)
+		})
+	}
+}
+
+func TestGetSystemOptionsProviderCABundleValidation(t *testing.T) {
+	cases := []struct {
+		name       string
+		configmap  *v1.ConfigMap
+		ref        *v1.LocalObjectReference
+		wantErrMsg string
+	}{
+		{
+			name:       "ConfigMapNotFound",
+			configmap:  nil,
+			ref:        &v1.LocalObjectReference{Name: "my-ca-bundle"},
+			wantErrMsg: "spec.system.customCABundleConfigMapRef: Invalid value: v1.LocalObjectReference{Name:\"my-ca-bundle\"}: configmaps \"my-ca-bundle\" not found",
+		},
+		{
+			name:       "KeyMissing",
+			configmap:  testCABundleConfigMapMissingKey("my-ca-bundle", namespace),
+			ref:        &v1.LocalObjectReference{Name: "my-ca-bundle"},
+			wantErrMsg: "spec.system.customCABundleConfigMapRef: Invalid value: v1.LocalObjectReference{Name:\"my-ca-bundle\"}: required configmap key, ca-bundle.crt, not found",
+		},
+		{
+			name:       "EmptyName",
+			configmap:  nil,
+			ref:        &v1.LocalObjectReference{},
+			wantErrMsg: "spec.system.customCABundleConfigMapRef: Invalid value: v1.LocalObjectReference{Name:\"\"}: configmap name is required",
+		},
+		{
+			name:      "HappyPath",
+			configmap: testCABundleConfigMap("my-ca-bundle", namespace),
+			ref:       &v1.LocalObjectReference{Name: "my-ca-bundle"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(subT *testing.T) {
+			var objs []runtime.Object
+			if tc.configmap != nil {
+				objs = append(objs, tc.configmap)
+			}
+			cl := fake.NewFakeClient(objs...)
+
+			apimanager := basicApimanagerSpecTestSystemOptions()
+			apimanager.Spec.System.CustomCABundleConfigMapRef = tc.ref
+
+			optsProvider := NewSystemOptionsProvider(apimanager, namespace, cl)
+			opts, err := optsProvider.GetSystemOptions()
+			if tc.wantErrMsg != "" {
+				if err == nil {
+					subT.Fatalf("expected error containing %q, got nil", tc.wantErrMsg)
+				}
+				if !strings.Contains(err.Error(), tc.wantErrMsg) {
+					subT.Errorf("expected error to contain %q, got: %v", tc.wantErrMsg, err)
+				}
+				return
+			}
+			if err != nil {
+				subT.Fatalf("unexpected error: %v", err)
+			}
+			if opts.SystemCustomCABundleConfigMap == nil {
+				subT.Error("expected SystemCustomCABundleConfigMap to be set, got nil")
+			}
 		})
 	}
 }

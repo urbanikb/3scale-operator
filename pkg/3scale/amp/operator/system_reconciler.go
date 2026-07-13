@@ -198,6 +198,7 @@ func (r *SystemReconciler) Reconcile() (reconcile.Result, error) {
 			r.systemZyncEnvVarMutator,
 			r.systemDatabaseTLSEnvVarMutator,
 			r.systemRedisTLSEnvVarMutator,
+			r.systemCABundleEnvVarMutator,
 			systemDeploymentVolumesMutator,
 			systemDeploymentInitContainerVolumeMountsMutator,
 			systemDeploymentContainerVolumeMountsMutator,
@@ -266,6 +267,7 @@ func (r *SystemReconciler) Reconcile() (reconcile.Result, error) {
 		r.systemZyncEnvVarMutator,
 		r.systemDatabaseTLSEnvVarMutator,
 		r.systemRedisTLSEnvVarMutator,
+		r.systemCABundleEnvVarMutator,
 		sidekiqDeploymentVolumesMutator,
 		sidekiqDeploymentInitContainerVolumeMountsMutator,
 		sidekiqDeploymentContainerVolumeMountsMutator,
@@ -639,6 +641,10 @@ func (r *SystemReconciler) systemRedisTLSEnvVarMutator(desired, existing *k8sapp
 	return changed, nil
 }
 
+func (r *SystemReconciler) systemCABundleEnvVarMutator(desired, existing *k8sappsv1.Deployment) (bool, error) {
+	return reconcilers.DeploymentEnvVarReconciler(desired, existing, "SSL_CERT_FILE"), nil
+}
+
 func systemDeploymentVolumesMutator(desired, existing *k8sappsv1.Deployment) (bool, error) {
 	volumeNames := []string{
 		"tls-secret",
@@ -646,6 +652,7 @@ func systemDeploymentVolumesMutator(desired, existing *k8sappsv1.Deployment) (bo
 		"system-redis-tls",
 		"backend-redis-tls",
 		"s3-credentials",
+		component.SystemCABundleVolumeName,
 	}
 
 	return reconcilers.WeakDeploymentVolumesMutator(desired, existing, volumeNames)
@@ -666,6 +673,7 @@ func systemDeploymentContainerVolumeMountsMutator(desired, existing *k8sappsv1.D
 		"system-redis-tls",
 		"backend-redis-tls",
 		"writable-tls",
+		component.SystemCABundleVolumeName,
 	}
 	return reconcilers.WeakDeploymentContainerVolumeMountsMutator(desired, existing, volumeMountNames)
 }
@@ -677,6 +685,7 @@ func sidekiqDeploymentVolumesMutator(desired, existing *k8sappsv1.Deployment) (b
 		"writable-tls",
 		"system-redis-tls",
 		"backend-redis-tls",
+		component.SystemCABundleVolumeName,
 	}
 
 	return reconcilers.WeakDeploymentVolumesMutator(desired, existing, volumeNames)
@@ -699,6 +708,7 @@ func sidekiqDeploymentContainerVolumeMountsMutator(desired, existing *k8sappsv1.
 		"system-redis-tls",
 		"backend-redis-tls",
 		"writable-tls",
+		component.SystemCABundleVolumeName,
 	}
 	return reconcilers.WeakDeploymentContainerVolumeMountsMutator(desired, existing, volumeMountNames)
 }

@@ -28,6 +28,8 @@ type ZyncOptions struct {
 	DatabaseSslKey                        string
 	ZyncDbTLSEnabled                      bool
 
+	ZyncCustomCABundleConfigMap *v1.ConfigMap
+
 	ZyncAffinity            *v1.Affinity    `validate:"-"`
 	ZyncTolerations         []v1.Toleration `validate:"-"`
 	ZyncQueAffinity         *v1.Affinity    `validate:"-"`

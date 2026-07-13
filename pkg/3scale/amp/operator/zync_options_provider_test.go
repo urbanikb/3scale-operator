@@ -3,6 +3,7 @@ package operator
 import (
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -396,6 +397,70 @@ func TestGetZyncOptionsProvider(t *testing.T) {
 			expectedOptions := tc.expectedOptionsFactory(opts)
 			if !reflect.DeepEqual(expectedOptions, opts) {
 				subT.Errorf("Resulting expected options differ: %s", cmp.Diff(expectedOptions, opts, cmpopts.IgnoreUnexported(resource.Quantity{})))
+			}
+		})
+	}
+}
+
+func TestGetZyncOptionsProviderCABundleValidation(t *testing.T) {
+	cases := []struct {
+		name       string
+		configmap  *v1.ConfigMap
+		ref        *v1.LocalObjectReference
+		wantErrMsg string
+	}{
+		{
+			name:       "ConfigMapNotFound",
+			configmap:  nil,
+			ref:        &v1.LocalObjectReference{Name: "my-ca-bundle"},
+			wantErrMsg: "spec.zync.customCABundleConfigMapRef: Invalid value: v1.LocalObjectReference{Name:\"my-ca-bundle\"}: configmaps \"my-ca-bundle\" not found",
+		},
+		{
+			name:       "KeyMissing",
+			configmap:  testCABundleConfigMapMissingKey("my-ca-bundle", namespace),
+			ref:        &v1.LocalObjectReference{Name: "my-ca-bundle"},
+			wantErrMsg: "spec.zync.customCABundleConfigMapRef: Invalid value: v1.LocalObjectReference{Name:\"my-ca-bundle\"}: required configmap key, ca-bundle.crt, not found",
+		},
+		{
+			name:       "EmptyName",
+			configmap:  nil,
+			ref:        &v1.LocalObjectReference{},
+			wantErrMsg: "spec.zync.customCABundleConfigMapRef: Invalid value: v1.LocalObjectReference{Name:\"\"}: configmap name is required",
+		},
+		{
+			name:      "HappyPath",
+			configmap: testCABundleConfigMap("my-ca-bundle", namespace),
+			ref:       &v1.LocalObjectReference{Name: "my-ca-bundle"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(subT *testing.T) {
+			var objs []runtime.Object
+			if tc.configmap != nil {
+				objs = append(objs, tc.configmap)
+			}
+			cl := fake.NewFakeClient(objs...)
+
+			apimanager := basicApimanagerSpecTestZyncOptions()
+			apimanager.Spec.Zync.CustomCABundleConfigMapRef = tc.ref
+
+			optsProvider := NewZyncOptionsProvider(apimanager, namespace, cl)
+			opts, err := optsProvider.GetZyncOptions()
+			if tc.wantErrMsg != "" {
+				if err == nil {
+					subT.Fatalf("expected error containing %q, got nil", tc.wantErrMsg)
+				}
+				if !strings.Contains(err.Error(), tc.wantErrMsg) {
+					subT.Errorf("expected error to contain %q, got: %v", tc.wantErrMsg, err)
+				}
+				return
+			}
+			if err != nil {
+				subT.Fatalf("unexpected error: %v", err)
+			}
+			if opts.ZyncCustomCABundleConfigMap == nil {
+				subT.Error("expected ZyncCustomCABundleConfigMap to be set, got nil")
 			}
 		})
 	}

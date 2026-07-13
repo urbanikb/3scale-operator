@@ -3,6 +3,7 @@ package component
 import (
 	"context"
 	"fmt"
+	"path"
 	"sort"
 	"strconv"
 
@@ -18,6 +19,11 @@ import (
 	"github.com/3scale/3scale-operator/apis/apps"
 	"github.com/3scale/3scale-operator/pkg/helper"
 	"github.com/3scale/3scale-operator/pkg/reconcilers"
+)
+
+const (
+	SystemCABundleVolumeName = "system-ca-bundle"
+	SystemCABundleMountPath  = "/var/run/secrets/system"
 )
 
 const (
@@ -307,6 +313,10 @@ func (system *System) buildSystemBaseEnv() []v1.EnvVar {
 				helper.EnvVarFromSecret(apps.AwsSecretAccessKey, system.Options.S3FileStorageOptions.ConfigurationSecretName, apps.AwsSecretAccessKey),
 			)
 		}
+	}
+
+	if system.Options.SystemCustomCABundleConfigMap != nil {
+		result = append(result, helper.EnvVarFromValue("SSL_CERT_FILE", path.Join(SystemCABundleMountPath, helper.CABundleKey)))
 	}
 
 	return result
@@ -609,6 +619,22 @@ func (system *System) appPodVolumes() []v1.Volume {
 	}
 
 	res = append(res, system.redisTLSVolumes()...)
+
+	if system.Options.SystemCustomCABundleConfigMap != nil {
+		res = append(res, v1.Volume{
+			Name: SystemCABundleVolumeName,
+			VolumeSource: v1.VolumeSource{
+				ConfigMap: &v1.ConfigMapVolumeSource{
+					LocalObjectReference: v1.LocalObjectReference{
+						Name: system.Options.SystemCustomCABundleConfigMap.Name,
+					},
+					Items: []v1.KeyToPath{
+						{Key: helper.CABundleKey, Path: helper.CABundleKey},
+					},
+				},
+			},
+		})
+	}
 
 	if system.Options.S3FileStorageOptions != nil && system.Options.S3FileStorageOptions.STSEnabled {
 		s3CredsProjectedVolume := v1.Volume{
@@ -1022,6 +1048,23 @@ func (system *System) SidekiqPodVolumes() []v1.Volume {
 	}
 
 	res = append(res, system.redisTLSVolumes()...)
+
+	if system.Options.SystemCustomCABundleConfigMap != nil {
+		res = append(res, v1.Volume{
+			Name: SystemCABundleVolumeName,
+			VolumeSource: v1.VolumeSource{
+				ConfigMap: &v1.ConfigMapVolumeSource{
+					LocalObjectReference: v1.LocalObjectReference{
+						Name: system.Options.SystemCustomCABundleConfigMap.Name,
+					},
+					Items: []v1.KeyToPath{
+						{Key: helper.CABundleKey, Path: helper.CABundleKey},
+					},
+				},
+			},
+		})
+	}
+
 	return res
 }
 
@@ -1150,6 +1193,14 @@ func (system *System) appCommonContainerVolumeMounts(systemStorageReadonly bool)
 		res = append(res, system.systemTlsVolumeMount())
 	}
 
+	if system.Options.SystemCustomCABundleConfigMap != nil {
+		res = append(res, v1.VolumeMount{
+			Name:      SystemCABundleVolumeName,
+			MountPath: SystemCABundleMountPath,
+			ReadOnly:  true,
+		})
+	}
+
 	return res
 }
 
@@ -1185,6 +1236,14 @@ func (system *System) sidekiqContainerVolumeMounts() []v1.VolumeMount {
 	res = append(res, system.redisTLSVolumeMounts()...)
 	if system.Options.S3FileStorageOptions != nil && system.Options.S3FileStorageOptions.STSEnabled {
 		res = append(res, system.s3CredsProjectedVolumeMount())
+	}
+
+	if system.Options.SystemCustomCABundleConfigMap != nil {
+		res = append(res, v1.VolumeMount{
+			Name:      SystemCABundleVolumeName,
+			MountPath: SystemCABundleMountPath,
+			ReadOnly:  true,
+		})
 	}
 
 	return res

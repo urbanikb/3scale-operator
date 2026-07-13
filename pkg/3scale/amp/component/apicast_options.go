@@ -129,6 +129,8 @@ type ApicastOptions struct {
 
 	ProductionServiceCacheSize *int32
 	StagingServiceCacheSize    *int32
+
+	ApicastCustomCABundleConfigMap *v1.ConfigMap
 }
 
 func NewApicastOptions() *ApicastOptions {

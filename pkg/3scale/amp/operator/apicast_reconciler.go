@@ -80,6 +80,7 @@ func (r *ApicastReconciler) Reconcile() (reconcile.Result, error) {
 		apicastHTTPSEnvVarMutator,
 		apicastProxyConfigurationsEnvVarMutator,
 		apicastServiceCacheSizeEnvVarMutator,
+		apicastCABundleEnvVarMutator,
 		apicastVolumeMountsMutator,
 		apicastVolumesMutator,
 		apicastCustomPolicyAnnotationsMutator,  // Should be always after volume mutator
@@ -123,6 +124,7 @@ func (r *ApicastReconciler) Reconcile() (reconcile.Result, error) {
 		apicastHTTPSEnvVarMutator,
 		apicastProxyConfigurationsEnvVarMutator,
 		apicastServiceCacheSizeEnvVarMutator,
+		apicastCABundleEnvVarMutator,
 		apicastVolumeMountsMutator,
 		apicastVolumesMutator,
 		apicastCustomPolicyAnnotationsMutator,  // Should be always after volume mutator
@@ -331,6 +333,10 @@ func apicastServiceCacheSizeEnvVarMutator(desired, existing *k8sappsv1.Deploymen
 	return reconcilers.DeploymentEnvVarReconciler(desired, existing, "APICAST_SERVICE_CACHE_SIZE"), nil
 }
 
+func apicastCABundleEnvVarMutator(desired, existing *k8sappsv1.Deployment) (bool, error) {
+	return reconcilers.DeploymentEnvVarReconciler(desired, existing, "SSL_CERT_FILE"), nil
+}
+
 func portsMutator(desired, existing *k8sappsv1.Deployment) (bool, error) {
 	changed := false
 
@@ -432,6 +438,22 @@ func apicastVolumeMountsMutator(desired, existing *k8sappsv1.Deployment) (bool, 
 		changed = true
 	}
 
+	// Reconcile CA bundle volume mount: add when desired, remove when no longer desired
+	existingCAIdx := helper.FindVolumeMountByName(existingContainer.VolumeMounts, component.ApicastCABundleVolumeName)
+	desiredCAIdx := helper.FindVolumeMountByName(desiredContainer.VolumeMounts, component.ApicastCABundleVolumeName)
+	if desiredCAIdx < 0 && existingCAIdx >= 0 {
+		existingContainer.VolumeMounts = append(existingContainer.VolumeMounts[:existingCAIdx], existingContainer.VolumeMounts[existingCAIdx+1:]...)
+		changed = true
+	} else if desiredCAIdx >= 0 && existingCAIdx < 0 {
+		existingContainer.VolumeMounts = append(existingContainer.VolumeMounts, desiredContainer.VolumeMounts[desiredCAIdx])
+		changed = true
+	} else if desiredCAIdx >= 0 && existingCAIdx >= 0 {
+		if !reflect.DeepEqual(existingContainer.VolumeMounts[existingCAIdx], desiredContainer.VolumeMounts[desiredCAIdx]) {
+			existingContainer.VolumeMounts[existingCAIdx] = desiredContainer.VolumeMounts[desiredCAIdx]
+			changed = true
+		}
+	}
+
 	return changed, nil
 }
 
@@ -523,6 +545,22 @@ func apicastVolumesMutator(desired, existing *k8sappsv1.Deployment) (bool, error
 		// shift all of the elements at the right of the deleting index by one to the left
 		existingSpec.Volumes = append(existingSpec.Volumes[:existingIdx], existingSpec.Volumes[existingIdx+1:]...)
 		changed = true
+	}
+
+	// Reconcile CA bundle volume: add when desired, remove when no longer desired
+	existingCAIdx := helper.FindVolumeByName(existingSpec.Volumes, component.ApicastCABundleVolumeName)
+	desiredCAIdx := helper.FindVolumeByName(desiredSpec.Volumes, component.ApicastCABundleVolumeName)
+	if desiredCAIdx < 0 && existingCAIdx >= 0 {
+		existingSpec.Volumes = append(existingSpec.Volumes[:existingCAIdx], existingSpec.Volumes[existingCAIdx+1:]...)
+		changed = true
+	} else if desiredCAIdx >= 0 && existingCAIdx < 0 {
+		existingSpec.Volumes = append(existingSpec.Volumes, desiredSpec.Volumes[desiredCAIdx])
+		changed = true
+	} else if desiredCAIdx >= 0 && existingCAIdx >= 0 {
+		if !reflect.DeepEqual(existingSpec.Volumes[existingCAIdx], desiredSpec.Volumes[desiredCAIdx]) {
+			existingSpec.Volumes[existingCAIdx] = desiredSpec.Volumes[desiredCAIdx]
+			changed = true
+		}
 	}
 
 	return changed, nil
