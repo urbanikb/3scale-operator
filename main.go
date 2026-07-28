@@ -31,7 +31,6 @@ import (
 	capabilitiescontroller "github.com/3scale/3scale-operator/controllers/capabilities"
 	"github.com/3scale/3scale-operator/pkg/reconcilers"
 	"github.com/3scale/3scale-operator/version"
-	"github.com/getkin/kin-openapi/openapi3"
 	grafanav1alpha1 "github.com/grafana-operator/grafana-operator/v4/api/integreatly/v1alpha1"
 	grafanav1beta1 "github.com/grafana-operator/grafana-operator/v5/api/v1beta1"
 	configv1 "github.com/openshift/api/config/v1"
@@ -71,7 +70,7 @@ func init() {
 	// invalid components: unsupported 'format' value "uuid"
 	// https://github.com/getkin/kin-openapi/issues/442
 	// https://pkg.go.dev/github.com/getkin/kin-openapi@v0.80.0/openapi3#SchemaFormatValidationDisabled
-	openapi3.SchemaFormatValidationDisabled = true
+	// openapi3.SchemaFormatValidationDisabled = true
 
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
