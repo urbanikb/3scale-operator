@@ -15,6 +15,7 @@ import (
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/utils/ptr"
 )
 
 const (
@@ -256,6 +257,9 @@ func (backend *Backend) CronDeployment(ctx context.Context, k8sclient client.Cli
 								},
 								InitialDelaySeconds: 30,
 								PeriodSeconds:       5,
+								TimeoutSeconds:      1,
+								SuccessThreshold:    1,
+								FailureThreshold:    3,
 							},
 						},
 					},
@@ -330,10 +334,10 @@ func (backend *Backend) ListenerDeployment(ctx context.Context, k8sclient client
 									},
 								},
 								InitialDelaySeconds: 30,
-								TimeoutSeconds:      0,
+								TimeoutSeconds:      1,
 								PeriodSeconds:       10,
-								SuccessThreshold:    0,
-								FailureThreshold:    0,
+								SuccessThreshold:    1,
+								FailureThreshold:    3,
 							},
 							ReadinessProbe: &v1.Probe{
 								ProbeHandler: v1.ProbeHandler{
@@ -343,13 +347,14 @@ func (backend *Backend) ListenerDeployment(ctx context.Context, k8sclient client
 											Type:   intstr.Int,
 											IntVal: 3000,
 										},
+										Scheme: v1.URISchemeHTTP,
 									},
 								},
 								InitialDelaySeconds: 30,
 								TimeoutSeconds:      5,
-								PeriodSeconds:       0,
-								SuccessThreshold:    0,
-								FailureThreshold:    0,
+								PeriodSeconds:       10,
+								SuccessThreshold:    1,
+								FailureThreshold:    3,
 							},
 							ImagePullPolicy: v1.PullIfNotPresent,
 						},
@@ -668,7 +673,7 @@ func (backend *Backend) QueuesRedisTLSEnvVars() []v1.EnvVar {
 }
 
 func (backend *Backend) backendVolumes() []v1.Volume {
-	res := []v1.Volume{}
+	var res []v1.Volume
 	if backend.Options.BackendRedisTLS.Enabled {
 		items := []v1.KeyToPath{}
 		if backend.Options.BackendRedisTLS.HasCA() {
@@ -682,8 +687,9 @@ func (backend *Backend) backendVolumes() []v1.Volume {
 			Name: "backend-redis-tls",
 			VolumeSource: v1.VolumeSource{
 				Secret: &v1.SecretVolumeSource{
-					SecretName: BackendSecretBackendRedisSecretName,
-					Items:      items,
+					SecretName:  BackendSecretBackendRedisSecretName,
+					Items:       items,
+					DefaultMode: ptr.To(v1.SecretVolumeSourceDefaultMode),
 				},
 			},
 		}
@@ -703,8 +709,9 @@ func (backend *Backend) backendVolumes() []v1.Volume {
 			Name: "queues-redis-tls",
 			VolumeSource: v1.VolumeSource{
 				Secret: &v1.SecretVolumeSource{
-					SecretName: BackendSecretBackendRedisSecretName,
-					Items:      items,
+					SecretName:  BackendSecretBackendRedisSecretName,
+					Items:       items,
+					DefaultMode: ptr.To(v1.SecretVolumeSourceDefaultMode),
 				},
 			},
 		}
@@ -725,7 +732,7 @@ func (backend *Backend) backendListenerRunArgs() []string {
 }
 
 func (backend *Backend) backendContainerVolumeMounts() []v1.VolumeMount {
-	res := []v1.VolumeMount{}
+	var res []v1.VolumeMount
 	if backend.Options.BackendRedisTLS.Enabled {
 		res = append(res, backend.backendRedisContainerVolumeMounts())
 	}

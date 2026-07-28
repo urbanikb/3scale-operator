@@ -11,6 +11,7 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -642,6 +643,9 @@ func (zync *Zync) zyncInit(containerImage string) []v1.Container {
 					"-c",
 					"cp /tls/* /writable-tls/ && chmod 0600 /writable-tls/*",
 				},
+				ImagePullPolicy:          v1.PullIfNotPresent,
+				TerminationMessagePath:   v1.TerminationMessagePathDefault,
+				TerminationMessagePolicy: v1.TerminationMessageReadFile,
 				VolumeMounts: []v1.VolumeMount{
 					{
 						Name:      "tls-secret",
@@ -663,6 +667,9 @@ func (zync *Zync) zyncInit(containerImage string) []v1.Container {
 					"-c",
 					"bundle exec sh -c \"until rake boot:db; do sleep $SLEEP_SECONDS; done\"",
 				},
+				ImagePullPolicy:          v1.PullIfNotPresent,
+				TerminationMessagePath:   v1.TerminationMessagePathDefault,
+				TerminationMessagePolicy: v1.TerminationMessageReadFile,
 				Env: []v1.EnvVar{
 					{
 						Name:  "SLEEP_SECONDS",
@@ -704,6 +711,9 @@ func (zync *Zync) zyncInit(containerImage string) []v1.Container {
 					"-c",
 					"bundle exec sh -c \"until rake boot:db; do sleep $SLEEP_SECONDS; done\"",
 				},
+				ImagePullPolicy:          v1.PullIfNotPresent,
+				TerminationMessagePath:   v1.TerminationMessagePathDefault,
+				TerminationMessagePolicy: v1.TerminationMessageReadFile,
 				Env: []v1.EnvVar{
 					{
 						Name:  "SLEEP_SECONDS",
@@ -763,6 +773,7 @@ func (zync *Zync) zyncVolume() []v1.Volume {
 								Path: "tls.key", // Map the secret key to the tls.key file in the container
 							},
 						},
+						DefaultMode: ptr.To(v1.SecretVolumeSourceDefaultMode),
 					},
 				},
 			},
@@ -789,6 +800,9 @@ func (zync *Zync) zyncQueInit(containerImage string) []v1.Container {
 					"-c",
 					"cp /tls/* /writable-tls/ && chmod 0600 /writable-tls/*",
 				},
+				ImagePullPolicy:          v1.PullIfNotPresent,
+				TerminationMessagePath:   v1.TerminationMessagePathDefault,
+				TerminationMessagePolicy: v1.TerminationMessageReadFile,
 				VolumeMounts: []v1.VolumeMount{
 					{
 						Name:      "tls-secret",
