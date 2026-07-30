@@ -316,7 +316,7 @@ func (p *OpenAPIProductReconciler) parseUserKeyCredentialsLoc(inField string) *s
 
 func (p *OpenAPIProductReconciler) desiredMethods() map[string]capabilitiesv1beta1.MethodSpec {
 	methods := make(map[string]capabilitiesv1beta1.MethodSpec)
-	for path, pathItem := range p.openapiObj.Paths {
+	for path, pathItem := range p.openapiObj.Paths.Map() {
 		for opVerb, operation := range pathItem.Operations() {
 			methodSystemName := helper.MethodSystemNameFromOpenAPIOperation(path, opVerb, operation)
 			methods[methodSystemName] = capabilitiesv1beta1.MethodSpec{
@@ -330,7 +330,7 @@ func (p *OpenAPIProductReconciler) desiredMethods() map[string]capabilitiesv1bet
 
 func (p *OpenAPIProductReconciler) desiredMappingRules() ([]capabilitiesv1beta1.MappingRuleSpec, error) {
 	mappingRules := make([]capabilitiesv1beta1.MappingRuleSpec, 0)
-	for path, pathItem := range p.openapiObj.Paths {
+	for path, pathItem := range p.openapiObj.Paths.Map() {
 		desiredPattern, err := p.desiredMappingRulesPattern(path)
 		if err != nil {
 			return nil, err
