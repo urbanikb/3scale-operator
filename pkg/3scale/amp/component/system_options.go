@@ -110,6 +110,8 @@ type SystemOptions struct {
 
 	SystemRedisTLS  TLSConfig
 	BackendRedisTLS TLSConfig
+
+	SystemCustomCABundleConfigMap *v1.ConfigMap
 }
 
 func NewSystemOptions() *SystemOptions {

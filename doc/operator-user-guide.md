@@ -30,6 +30,7 @@
         - [Setting Redis TLS Environment variables](#setting-redis-tls-environment-variables)
         - [Sentinel for Redis TLS](#sentinel-for-redis-tls)
       - [Setting Redis ACL Environment variables](#setting-redis-acl-environment-variables)
+      - [Custom CA bundle](#custom-ca-bundle)
     - [Preflights](#preflights)
     - [Reconciliation](#reconciliation)
       - [Resources](#resources)
@@ -999,6 +1000,9 @@ spec:
 
 #### Setting porta client to skip certificate verification
 Whenever a controller reconciles an object it creates a new porta client to make API calls. That client is configured to verify the server's certificate chain by default. For development/testing purposes, you may want the client to skip certificate verification when reconciling an object. This can be done using the annotation `insecure_skip_verify: true`, which can be added to the following objects:
+
+> **Tip:** If the server uses a certificate issued by a private or internal CA, consider using a [Custom CA bundle](#custom-ca-bundle) instead, which supplies the trust chain without disabling certificate verification.
+
 * ActiveDoc
 * Application
 * Backend
@@ -1160,6 +1164,75 @@ See [APIManager CRD](apimanager-reference.md) - `backend-redis` and `system-redi
 - When Redis TLS is enabled, Sentinel (if defined) must also use TLS communication. The corresponding Sentinel Hosts fields in the system-redis and/or backend-redis secrets, if populated, must have a `rediss://` URL prefix. Note that TLS communication will work if just one of the Sentinel hosts is secure. However, this is not recommended for reliability, as it poses a risk if the secure host fails. It is advised to have all Sentinel hosts secured.
 
 - If the Sentinel Hosts fields are not defined or are empty in the system-redis and/or backend-redis secrets, this is a valid configuration. In this case, Redis clients will communicate directly with the Redis Master over TLS, bypassing Sentinel. This is a valid configuration when Sentinel is not needed.
+
+#### Custom CA bundle
+
+When 3scale components need to connect to HTTPS endpoints that use a certificate issued by a private or internal CA, you can supply a custom CA certificate bundle to each component via the `customCABundleConfigMapRef` field in the APIManager CR.
+
+The field is available independently on three top-level component specs: `spec.apicast`, `spec.system`, and `spec.zync`. Each accepts a reference to a ConfigMap in the same namespace that must contain the CA bundle under the key `ca-bundle.crt`.
+
+**How it works:**
+
+The operator mounts the ConfigMap as a volume into all containers of that component and sets the relevant environment variable so the process trusts the bundle:
+
+| Component | Affected pods |
+|-----------|--------------|
+| Apicast | `apicast-production`, `apicast-staging` |
+| System | `system-app`, `system-sidekiq` |
+| Zync | `zync`, `zync-que` |
+
+If the referenced ConfigMap does not exist or does not contain the `ca-bundle.crt` key, reconciliation will fail and retry. The error is written to the operator logs.
+
+**Step 1 — Prepare the CA bundle file:**
+
+Retrieve the certificate chain from the upstream service:
+
+```bash
+$ echo -n | openssl s_client -connect <SERVER FQDN>:<PORT> -servername <SERVER FQDN> --showcerts \
+  | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > custom-ca.pem
+```
+
+> **Note:** Some versions of openssl accept `-showcerts` instead of `--showcerts`.
+
+Copy the system trust bundle from a running container (for example, `system-sidekiq`) and append the custom certificate to it:
+
+```bash
+$ oc rsh -c system-sidekiq dc/system-sidekiq cat /etc/pki/tls/cert.pem > ca-bundle.crt 2>&1
+$ cat custom-ca.pem >> ca-bundle.crt
+```
+
+**Step 2 — Create the ConfigMap:**
+
+```bash
+$ oc create configmap my-ca-bundle \
+  --from-file=ca-bundle.crt=ca-bundle.crt
+```
+
+The key must be named exactly `ca-bundle.crt`.
+
+**Step 3 — Reference it in the APIManager CR:**
+
+The example below supplies the same bundle to all three components. You can omit any component whose pods do not need the custom CA:
+
+```yaml
+apiVersion: apps.3scale.net/v1alpha1
+kind: APIManager
+metadata:
+  name: example-apimanager
+spec:
+  wildcardDomain: example.com
+  apicast:
+    customCABundleConfigMapRef:
+      name: my-ca-bundle
+  system:
+    customCABundleConfigMapRef:
+      name: my-ca-bundle
+  zync:
+    customCABundleConfigMapRef:
+      name: my-ca-bundle
+```
+
+See [CustomCABundleConfigMapRef](apimanager-reference.md#CustomCABundleConfigMapRef) in the APIManager CRD reference for field-level details.
 
 #### Setting Redis ACL Environment variables
 To allow user to set the ACL credentials (username and password) to connect to Redis -  Environment variables will be set in Backend and System pods.

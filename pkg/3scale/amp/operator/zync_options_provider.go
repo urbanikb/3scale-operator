@@ -11,6 +11,8 @@ import (
 	"github.com/3scale/3scale-operator/version"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -64,6 +66,11 @@ func (z *ZyncOptionsProvider) GetZyncOptions() (*component.ZyncOptions, error) {
 	z.zyncOptions.ZyncQueServiceAccountImagePullSecrets = z.zyncQueServiceAccountImagePullSecrets()
 
 	z.zyncOptions.Namespace = z.apimanager.Namespace
+
+	err = z.setZyncCustomCABundle()
+	if err != nil {
+		return nil, err
+	}
 
 	err = z.zyncOptions.Validate()
 	if err != nil {
@@ -363,4 +370,24 @@ func (z *ZyncOptionsProvider) zyncQuePodTemplateAnnotations() map[string]string 
 
 func (z *ZyncOptionsProvider) setZyncTLSEnabled() {
 	z.zyncOptions.ZyncDbTLSEnabled = z.apimanager.IsZyncDatabaseTLSEnabled()
+}
+
+func (z *ZyncOptionsProvider) setZyncCustomCABundle() error {
+	if z.apimanager.Spec.Zync.CustomCABundleConfigMapRef == nil {
+		return nil
+	}
+
+	fldPath := field.NewPath("spec").Child("zync").Child("customCABundleConfigMapRef")
+	nn := types.NamespacedName{
+		Name:      z.apimanager.Spec.Zync.CustomCABundleConfigMapRef.Name,
+		Namespace: z.namespace,
+	}
+	cm, err := helper.ValidateCABundleConfigMap(nn, z.client)
+	if err != nil {
+		fldErr := field.ErrorList{field.Invalid(fldPath, z.apimanager.Spec.Zync.CustomCABundleConfigMapRef, err.Error())}
+		return fldErr.ToAggregate()
+	}
+
+	z.zyncOptions.ZyncCustomCABundleConfigMap = cm
+	return nil
 }

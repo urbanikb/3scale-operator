@@ -205,6 +205,8 @@ type ApicastSpec struct {
 	ProductionSpec *ApicastProductionSpec `json:"productionSpec,omitempty"`
 	// +optional
 	StagingSpec *ApicastStagingSpec `json:"stagingSpec,omitempty"`
+	// +optional
+	CustomCABundleConfigMapRef *v1.LocalObjectReference `json:"customCABundleConfigMapRef,omitempty"`
 }
 
 type ApicastProductionSpec struct {
@@ -529,6 +531,8 @@ type SystemSpec struct {
 
 	// +optional
 	SystemRedisTLSEnabled *bool `json:"systemRedisTLSEnabled,omitempty"`
+	// +optional
+	CustomCABundleConfigMapRef *v1.LocalObjectReference `json:"customCABundleConfigMapRef,omitempty"`
 }
 
 type SystemAppSpec struct {
@@ -744,6 +748,8 @@ type ZyncSpec struct {
 	DatabaseAnnotations map[string]string `json:"databaseAnnotations,omitempty"`
 	// +optional
 	ZyncDatabaseTLSEnabled *bool `json:"zyncDatabaseTLSEnabled,omitempty"`
+	// +optional
+	CustomCABundleConfigMapRef *v1.LocalObjectReference `json:"customCABundleConfigMapRef,omitempty"`
 }
 
 type ZyncAppSpec struct {

@@ -13,6 +13,7 @@ One APIManager custom resource per project is allowed.
     - [APIManagerSpec](#apimanagerspec)
     - [APIManagerMetaData](#apimanagermetadata)
     - [ApicastSpec](#apicastspec)
+    - [CustomCABundleConfigMapRef](#customcabundleconfigmapref)
     - [ApicastProductionSpec](#apicastproductionspec)
     - [ApicastStagingSpec](#apicaststagingspec)
     - [CustomPolicySpec](#custompolicyspec)
@@ -128,6 +129,31 @@ These flags are prerequisites for enabling Redis TLS. However, additional config
 | Image | `image` | string | No | nil | Used to overwrite the desired container image for Apicast |
 | ProductionSpec | `productionSpec` | \*ApicastProductionSpec | No | See [ApicastProductionSpec](#ApicastProductionSpec) reference | Spec of APIcast production part |
 | StagingSpec | `stagingSpec` | \*ApicastStagingSpec | No | See [ApicastStagingSpec](#ApicastStagingSpec) reference | Spec of APIcast staging part |
+| CustomCABundleConfigMapRef | `customCABundleConfigMapRef` | [LocalObjectReference](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#localobjectreference-v1-core) | No | nil | Reference to a ConfigMap containing a custom CA bundle under the `ca-bundle.crt` key. When set, the bundle is mounted into all Apicast (production and staging) containers and the `SSL_CERT_FILE` environment variable is pointed at it. Useful when Apicast must connect to upstream services that use a self-signed or privately-signed certificate. See [CustomCABundleConfigMapRef](#CustomCABundleConfigMapRef). |
+
+### CustomCABundleConfigMapRef
+
+A [LocalObjectReference](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#localobjectreference-v1-core) pointing to a ConfigMap in the same namespace as the APIManager.
+
+The ConfigMap **must** contain a key named `ca-bundle.crt` whose value is a PEM-encoded CA certificate chain. The operator validates this at reconcile time. If the ConfigMap is missing or the `ca-bundle.crt` key is absent, reconciliation will fail and be retried — the error will appear in the operator logs.
+
+The bundle is volume-mounted into every container of the referenced component and the component's process is directed to trust it (e.g. `SSL_CERT_FILE` for Apicast). This allows the component to establish TLS connections to services signed by a private or self-signed CA (for example an on-premises Redis, database, or third-party HTTPS backend).
+
+Each component has its own independent `customCABundleConfigMapRef` field so you can supply different bundles per component, or reference the same ConfigMap for all of them.
+
+**Example ConfigMap:**
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: my-ca-bundle
+data:
+  ca-bundle.crt: |
+    -----BEGIN CERTIFICATE-----
+    <PEM-encoded CA certificate(s)>
+    -----END CERTIFICATE-----
+```
 
 ### ApicastProductionSpec
 
@@ -356,6 +382,7 @@ Some examples are available [here](/doc/adding-apicast-custom-environments.md)
 | RedisLabels | `redisLabels` | map[string]string | No | `nil ` |  **[DEPRECATED]** Use external databases only |
 | RedisAnnotations | `redisAnnotations` | map[string]string | No | `nil `  |  **[DEPRECATED]** Use external databases only |
 | SystemRedisTLSEnabled | `systemRedisTLSEnabled` | `bool` | No | `nil` | This flag enables Redis System TLS communication. When set to true, and with the secret validation successfully passed, Redis TLS environment variables are injected into the system-app and system-sidekiq pods: REDIS_CA_FILE, REDIS_CLIENT_CERT, REDIS_PRIVATE_KEY, and REDIS_SSL is set to true. These environment variables are required to establish system Redis TLS communication. **Important**: To establish System Redis TLS communication, the REDIS_SSL_CA, REDIS_SSL_CERT, and REDIS_SSL_KEY fields must be populated with valid certificates, not only in the system-redis secret but also in the backend-redis secret|
+| CustomCABundleConfigMapRef | `customCABundleConfigMapRef` | [LocalObjectReference](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#localobjectreference-v1-core) | No | nil | Reference to a ConfigMap containing a custom CA bundle under the `ca-bundle.crt` key. When set, the bundle is mounted into all System (system-app, system-sidekiq) containers. Useful when System must connect to upstream services that use a self-signed or privately-signed certificate. See [CustomCABundleConfigMapRef](#CustomCABundleConfigMapRef). |
 
 
 
@@ -545,6 +572,7 @@ Note: Deploying databases internally with this section is meant for evaluation p
 | DatabaseLabels | `databaseLabels` | map[string]string | No | `nil ` | Specifies labels that should be added to component |
 | DatabaseAnnotations | `databaseAnnotations` | map[string]string  | No | `nil ` | Specifies Annotations that should be added to component |
 | ZyncDatabaseTLSEnabled | `zyncDatabaseTLSEnabled`| bool | No | false | Required to set TLS Database connection. Only for TLS |
+| CustomCABundleConfigMapRef | `customCABundleConfigMapRef` | [LocalObjectReference](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#localobjectreference-v1-core) | No | nil | Reference to a ConfigMap containing a custom CA bundle under the `ca-bundle.crt` key. When set, the bundle is mounted into all Zync (zync, zync-que) containers. Useful when Zync must connect to upstream services that use a self-signed or privately-signed certificate. See [CustomCABundleConfigMapRef](#CustomCABundleConfigMapRef). |
 
 ### ZyncAppSpec
 

@@ -2,6 +2,7 @@ package component
 
 import (
 	"context"
+	"path"
 
 	"github.com/3scale/3scale-operator/pkg/helper"
 	"github.com/3scale/3scale-operator/pkg/reconcilers"
@@ -13,6 +14,11 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+)
+
+const (
+	ZyncCABundleVolumeName = "zync-ca-bundle"
+	ZyncCABundleMountPath  = "/var/run/secrets/zync"
 )
 
 const (
@@ -275,8 +281,9 @@ func (zync *Zync) Deployment(ctx context.Context, k8sclient client.Client, conta
 }
 
 func (zync *Zync) commonZyncEnvVars() []v1.EnvVar {
+	var result []v1.EnvVar
 	if zync.Options.ZyncDbTLSEnabled {
-		return []v1.EnvVar{
+		result = []v1.EnvVar{
 			helper.EnvVarFromValue("RAILS_LOG_TO_STDOUT", "true"),
 			helper.EnvVarFromValue("RAILS_ENV", "production"),
 			helper.EnvVarFromSecret("DATABASE_URL", "zync", "DATABASE_URL"),
@@ -310,32 +317,39 @@ func (zync *Zync) commonZyncEnvVars() []v1.EnvVar {
 				},
 			},
 		}
-	}
-	return []v1.EnvVar{
-		helper.EnvVarFromValue("RAILS_LOG_TO_STDOUT", "true"),
-		helper.EnvVarFromValue("RAILS_ENV", "production"),
-		helper.EnvVarFromSecret("DATABASE_URL", "zync", "DATABASE_URL"),
-		helper.EnvVarFromSecret("SECRET_KEY_BASE", "zync", "SECRET_KEY_BASE"),
-		helper.EnvVarFromSecret("ZYNC_AUTHENTICATION_TOKEN", "zync", "ZYNC_AUTHENTICATION_TOKEN"),
-		{
-			Name: "POD_NAME",
-			ValueFrom: &v1.EnvVarSource{
-				FieldRef: &v1.ObjectFieldSelector{
-					FieldPath:  "metadata.name",
-					APIVersion: "v1",
+	} else {
+		result = []v1.EnvVar{
+			helper.EnvVarFromValue("RAILS_LOG_TO_STDOUT", "true"),
+			helper.EnvVarFromValue("RAILS_ENV", "production"),
+			helper.EnvVarFromSecret("DATABASE_URL", "zync", "DATABASE_URL"),
+			helper.EnvVarFromSecret("SECRET_KEY_BASE", "zync", "SECRET_KEY_BASE"),
+			helper.EnvVarFromSecret("ZYNC_AUTHENTICATION_TOKEN", "zync", "ZYNC_AUTHENTICATION_TOKEN"),
+			{
+				Name: "POD_NAME",
+				ValueFrom: &v1.EnvVarSource{
+					FieldRef: &v1.ObjectFieldSelector{
+						FieldPath:  "metadata.name",
+						APIVersion: "v1",
+					},
 				},
 			},
-		},
-		{
-			Name: "POD_NAMESPACE",
-			ValueFrom: &v1.EnvVarSource{
-				FieldRef: &v1.ObjectFieldSelector{
-					FieldPath:  "metadata.namespace",
-					APIVersion: "v1",
+			{
+				Name: "POD_NAMESPACE",
+				ValueFrom: &v1.EnvVarSource{
+					FieldRef: &v1.ObjectFieldSelector{
+						FieldPath:  "metadata.namespace",
+						APIVersion: "v1",
+					},
 				},
 			},
-		},
+		}
 	}
+
+	if zync.Options.ZyncCustomCABundleConfigMap != nil {
+		result = append(result, helper.EnvVarFromValue("SSL_CERT_FILE", path.Join(ZyncCABundleMountPath, helper.CABundleKey)))
+	}
+
+	return result
 }
 
 func (zync *Zync) QueDeployment(ctx context.Context, k8sclient client.Client, containerImage string) (*k8sappsv1.Deployment, error) {
@@ -738,22 +752,32 @@ func (zync *Zync) zyncInit(containerImage string) []v1.Container {
 }
 
 func (zync *Zync) zyncVolumeMount() []v1.VolumeMount {
+	var mounts []v1.VolumeMount
 	if zync.Options.ZyncDbTLSEnabled {
-		return []v1.VolumeMount{
+		mounts = []v1.VolumeMount{
 			{
 				Name:      "writable-tls", // Reuse the same volume in the main container if needed
 				MountPath: "/tls",
 				ReadOnly:  true,
 			},
 		}
-	} else {
-		return []v1.VolumeMount{}
 	}
+
+	if zync.Options.ZyncCustomCABundleConfigMap != nil {
+		mounts = append(mounts, v1.VolumeMount{
+			Name:      ZyncCABundleVolumeName,
+			MountPath: ZyncCABundleMountPath,
+			ReadOnly:  true,
+		})
+	}
+
+	return mounts
 }
 
 func (zync *Zync) zyncVolume() []v1.Volume {
+	var volumes []v1.Volume
 	if zync.Options.ZyncDbTLSEnabled {
-		return []v1.Volume{
+		volumes = []v1.Volume{
 			{
 				Name: "tls-secret",
 				VolumeSource: v1.VolumeSource{
@@ -784,9 +808,25 @@ func (zync *Zync) zyncVolume() []v1.Volume {
 				},
 			},
 		}
-	} else {
-		return []v1.Volume{}
 	}
+
+	if zync.Options.ZyncCustomCABundleConfigMap != nil {
+		volumes = append(volumes, v1.Volume{
+			Name: ZyncCABundleVolumeName,
+			VolumeSource: v1.VolumeSource{
+				ConfigMap: &v1.ConfigMapVolumeSource{
+					LocalObjectReference: v1.LocalObjectReference{
+						Name: zync.Options.ZyncCustomCABundleConfigMap.Name,
+					},
+					Items: []v1.KeyToPath{
+						{Key: helper.CABundleKey, Path: helper.CABundleKey},
+					},
+				},
+			},
+		})
+	}
+
+	return volumes
 }
 
 func (zync *Zync) zyncQueInit(containerImage string) []v1.Container {

@@ -321,3 +321,106 @@ func createJobWithoutAnnotation(name, namespace, image string, completed bool) *
 
 	return job
 }
+
+// hasVolumeMount reports whether any container in the list has a volume mount with the given name.
+func hasVolumeMount(containers []v1.Container, name string) bool {
+	for _, container := range containers {
+		for _, volumeMount := range container.VolumeMounts {
+			if volumeMount.Name == name {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// assertPodHasConfigMapVolume checks that the pod spec contains a volume with the given name
+// backed by a configmap with the expected name.
+func assertPodHasConfigMapVolume(t *testing.T, deployment *k8sappsv1.Deployment, deploymentName, volumeName, configMapName string) {
+	t.Helper()
+	for _, vol := range deployment.Spec.Template.Spec.Volumes {
+		if vol.Name == volumeName {
+			if vol.ConfigMap == nil {
+				t.Errorf("deployment %s: volume %q has no configmap source", deploymentName, volumeName)
+				return
+			}
+			if vol.ConfigMap.Name != configMapName {
+				t.Errorf("deployment %s: volume %q configmap name = %q, want %q", deploymentName, volumeName, vol.ConfigMap.Name, configMapName)
+			}
+			return
+		}
+	}
+	t.Errorf("deployment %s: pod spec missing volume %q", deploymentName, volumeName)
+}
+
+// assertPodLacksVolume checks that the pod spec does not contain a volume with the given name.
+func assertPodLacksVolume(t *testing.T, deployment *k8sappsv1.Deployment, deploymentName, volumeName string) {
+	t.Helper()
+	for _, vol := range deployment.Spec.Template.Spec.Volumes {
+		if vol.Name == volumeName {
+			t.Errorf("deployment %s: expected pod volume %q to be absent after removal", deploymentName, volumeName)
+			return
+		}
+	}
+}
+
+// assertContainersHaveSSLCertFileEnvVar checks that every container in the deployment has the
+// SSL_CERT_FILE environment variable set to wantValue.
+func assertContainersHaveSSLCertFileEnvVar(t *testing.T, deployment *k8sappsv1.Deployment, deploymentName, wantValue string) {
+	t.Helper()
+	for _, container := range deployment.Spec.Template.Spec.Containers {
+		found := false
+		for _, env := range container.Env {
+			if env.Name == "SSL_CERT_FILE" {
+				found = true
+				if env.Value != wantValue {
+					t.Errorf("deployment %s container %s: SSL_CERT_FILE = %q, want %q", deploymentName, container.Name, env.Value, wantValue)
+				}
+				break
+			}
+		}
+		if !found {
+			t.Errorf("deployment %s container %s: missing SSL_CERT_FILE env var", deploymentName, container.Name)
+		}
+	}
+}
+
+// assertContainersLackSSLCertFileEnvVar checks that no container in the deployment has the
+// SSL_CERT_FILE environment variable set.
+func assertContainersLackSSLCertFileEnvVar(t *testing.T, deployment *k8sappsv1.Deployment, deploymentName string) {
+	t.Helper()
+	for _, container := range deployment.Spec.Template.Spec.Containers {
+		for _, env := range container.Env {
+			if env.Name == "SSL_CERT_FILE" {
+				t.Errorf("deployment %s container %s: expected SSL_CERT_FILE to be absent after removal", deploymentName, container.Name)
+				break
+			}
+		}
+	}
+}
+
+// testCABundleConfigMap returns a valid CA bundle ConfigMap for testing.
+func testCABundleConfigMap(name, ns string) *v1.ConfigMap {
+	return &v1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: ns,
+		},
+		Data: map[string]string{
+			helper.CABundleKey: "-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----\n",
+		},
+	}
+}
+
+// testCABundleConfigMapMissingKey returns a ConfigMap that lacks the required ca-bundle.crt key.
+func testCABundleConfigMapMissingKey(name, ns string) *v1.ConfigMap {
+	return &v1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: ns,
+		},
+		Data: map[string]string{
+			"wrong-key": "value",
+		},
+	}
+}

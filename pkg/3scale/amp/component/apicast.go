@@ -36,6 +36,9 @@ const (
 	HTTPSCertificatesMountPath  = "/var/run/secrets/tls"
 	HTTPSCertificatesVolumeName = "https-certificates"
 
+	ApicastCABundleVolumeName = "apicast-ca-bundle"
+	ApicastCABundleMountPath  = "/var/run/secrets/apicast"
+
 	APIcastEnvironmentConfigMapName = "apicast-environment"
 
 	OpentelemetryConfigurationVolumeName = "otel-volume"
@@ -364,6 +367,10 @@ func (apicast *Apicast) buildApicastStagingEnv() []v1.EnvVar {
 		result = append(result, helper.EnvVarFromValue("OPENTELEMETRY_CONFIG", apicast.Options.StagingOpentelemetry.ConfigFile))
 	}
 
+	if apicast.Options.ApicastCustomCABundleConfigMap != nil {
+		result = append(result, helper.EnvVarFromValue("SSL_CERT_FILE", path.Join(ApicastCABundleMountPath, helper.CABundleKey)))
+	}
+
 	return result
 }
 
@@ -443,6 +450,10 @@ func (apicast *Apicast) buildApicastProductionEnv() []v1.EnvVar {
 	if apicast.Options.ProductionOpentelemetry.Enabled {
 		result = append(result, helper.EnvVarFromValue("OPENTELEMETRY", "1"))
 		result = append(result, helper.EnvVarFromValue("OPENTELEMETRY_CONFIG", apicast.Options.ProductionOpentelemetry.ConfigFile))
+	}
+
+	if apicast.Options.ApicastCustomCABundleConfigMap != nil {
+		result = append(result, helper.EnvVarFromValue("SSL_CERT_FILE", path.Join(ApicastCABundleMountPath, helper.CABundleKey)))
 	}
 
 	return result
@@ -546,6 +557,14 @@ func (apicast *Apicast) productionVolumeMounts() []v1.VolumeMount {
 		})
 	}
 
+	if apicast.Options.ApicastCustomCABundleConfigMap != nil {
+		volumeMounts = append(volumeMounts, v1.VolumeMount{
+			Name:      ApicastCABundleVolumeName,
+			MountPath: ApicastCABundleMountPath,
+			ReadOnly:  true,
+		})
+	}
+
 	return volumeMounts
 }
 
@@ -587,6 +606,14 @@ func (apicast *Apicast) stagingVolumeMounts() []v1.VolumeMount {
 		volumeMounts = append(volumeMounts, v1.VolumeMount{
 			Name:      OpentelemetryConfigurationVolumeName,
 			MountPath: OpentelemetryConfigMountBasePath,
+			ReadOnly:  true,
+		})
+	}
+
+	if apicast.Options.ApicastCustomCABundleConfigMap != nil {
+		volumeMounts = append(volumeMounts, v1.VolumeMount{
+			Name:      ApicastCABundleVolumeName,
+			MountPath: ApicastCABundleMountPath,
 			ReadOnly:  true,
 		})
 	}
@@ -675,6 +702,22 @@ func (apicast *Apicast) productionVolumes() []v1.Volume {
 		})
 	}
 
+	if apicast.Options.ApicastCustomCABundleConfigMap != nil {
+		volumes = append(volumes, v1.Volume{
+			Name: ApicastCABundleVolumeName,
+			VolumeSource: v1.VolumeSource{
+				ConfigMap: &v1.ConfigMapVolumeSource{
+					LocalObjectReference: v1.LocalObjectReference{
+						Name: apicast.Options.ApicastCustomCABundleConfigMap.Name,
+					},
+					Items: []v1.KeyToPath{
+						{Key: helper.CABundleKey, Path: helper.CABundleKey},
+					},
+				},
+			},
+		})
+	}
+
 	return volumes
 }
 
@@ -738,6 +781,22 @@ func (apicast *Apicast) stagingVolumes() []v1.Volume {
 			VolumeSource: v1.VolumeSource{
 				Secret: &v1.SecretVolumeSource{
 					SecretName: *apicast.Options.StagingHTTPSCertificateSecretName,
+				},
+			},
+		})
+	}
+
+	if apicast.Options.ApicastCustomCABundleConfigMap != nil {
+		volumes = append(volumes, v1.Volume{
+			Name: ApicastCABundleVolumeName,
+			VolumeSource: v1.VolumeSource{
+				ConfigMap: &v1.ConfigMapVolumeSource{
+					LocalObjectReference: v1.LocalObjectReference{
+						Name: apicast.Options.ApicastCustomCABundleConfigMap.Name,
+					},
+					Items: []v1.KeyToPath{
+						{Key: helper.CABundleKey, Path: helper.CABundleKey},
+					},
 				},
 			},
 		})

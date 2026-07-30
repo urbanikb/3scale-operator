@@ -384,6 +384,156 @@ func testZyncAPIManagerCreator(zyncReplicas, zyncQueReplicas *int64) *appsv1alph
 	}
 }
 
+func TestZyncReconciler_CABundleVolumeMount(t *testing.T) {
+	const testNamespace = "operator-unittest"
+	ctx := context.TODO()
+
+	tests := []struct {
+		name              string
+		setupCR           func(*appsv1alpha1.APIManager)
+		additionalObjects []runtime.Object
+		assert            func(*testing.T, client.Client)
+	}{
+		{
+			name:    "NoCARefs",
+			setupCR: func(*appsv1alpha1.APIManager) {},
+			assert: func(t *testing.T, cl client.Client) {
+				for _, deploymentName := range []string{component.ZyncName, component.ZyncQueDeploymentName} {
+					deployment := getDeployment(t, cl, deploymentName, testNamespace)
+					if hasVolumeMount(deployment.Spec.Template.Spec.Containers, component.ZyncCABundleVolumeName) {
+						t.Errorf("deployment %s: expected CA bundle mount to be absent", deploymentName)
+					}
+				}
+			},
+		},
+		{
+			name: "WithZyncCARef",
+			setupCR: func(apimanager *appsv1alpha1.APIManager) {
+				apimanager.Spec.Zync.CustomCABundleConfigMapRef = &v1.LocalObjectReference{Name: "my-ca-bundle"}
+			},
+			additionalObjects: []runtime.Object{testCABundleConfigMap("my-ca-bundle", testNamespace)},
+			assert: func(t *testing.T, cl client.Client) {
+				for _, deploymentName := range []string{component.ZyncName, component.ZyncQueDeploymentName} {
+					deployment := getDeployment(t, cl, deploymentName, testNamespace)
+					if !hasVolumeMount(deployment.Spec.Template.Spec.Containers, component.ZyncCABundleVolumeName) {
+						t.Errorf("deployment %s: expected CA bundle mount to be present", deploymentName)
+					}
+					assertPodHasConfigMapVolume(t, deployment, deploymentName, component.ZyncCABundleVolumeName, "my-ca-bundle")
+					assertContainersHaveSSLCertFileEnvVar(t, deployment, deploymentName, component.ZyncCABundleMountPath+"/"+helper.CABundleKey)
+				}
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(subT *testing.T) {
+			apimanager := testZyncAPIManagerCreator(nil, nil)
+			tc.setupCR(apimanager)
+
+			objs := []runtime.Object{apimanager, testZyncSecret()}
+			objs = append(objs, tc.additionalObjects...)
+
+			s := setupScheme(subT)
+			baseLogicReconciler, cl := setupTestBaseReconciler(ctx, s, apimanager, objs)
+			zyncReconciler := NewZyncReconciler(baseLogicReconciler, true)
+			if _, err := zyncReconciler.Reconcile(); err != nil {
+				subT.Fatal(err)
+			}
+
+			tc.assert(subT, cl)
+		})
+	}
+}
+
+func TestZyncReconciler_CABundleVolumeMount_CAToNoCA(t *testing.T) {
+	const testNamespace = "operator-unittest"
+	ctx := context.TODO()
+
+	apimanager := testZyncAPIManagerCreator(nil, nil)
+	apimanager.Spec.Zync.CustomCABundleConfigMapRef = &v1.LocalObjectReference{Name: "my-ca-bundle"}
+
+	objs := []runtime.Object{apimanager, testZyncSecret(), testCABundleConfigMap("my-ca-bundle", testNamespace)}
+
+	s := setupScheme(t)
+	baseLogicReconciler, cl := setupTestBaseReconciler(ctx, s, apimanager, objs)
+	zyncReconciler := NewZyncReconciler(baseLogicReconciler, true)
+
+	// Phase 1: create deployments WITH CA mount
+	if _, err := zyncReconciler.Reconcile(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Assert phase 1: CA mount must be present before transition
+	for _, deploymentName := range []string{component.ZyncName, component.ZyncQueDeploymentName} {
+		deployment := getDeployment(t, cl, deploymentName, testNamespace)
+		if !hasVolumeMount(deployment.Spec.Template.Spec.Containers, component.ZyncCABundleVolumeName) {
+			t.Fatalf("deployment %s: expected CA bundle mount to be present before transition", deploymentName)
+		}
+	}
+
+	// Transition: remove CA ref
+	apimanager.Spec.Zync.CustomCABundleConfigMapRef = nil
+
+	// Phase 2: update deployments
+	if _, err := zyncReconciler.Reconcile(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Assert phase 2: CA mount, volume, and SSL_CERT_FILE must all be absent after removal
+	for _, deploymentName := range []string{component.ZyncName, component.ZyncQueDeploymentName} {
+		deployment := getDeployment(t, cl, deploymentName, testNamespace)
+		if hasVolumeMount(deployment.Spec.Template.Spec.Containers, component.ZyncCABundleVolumeName) {
+			t.Errorf("deployment %s: expected CA bundle mount to be absent after removal", deploymentName)
+		}
+		assertPodLacksVolume(t, deployment, deploymentName, component.ZyncCABundleVolumeName)
+		assertContainersLackSSLCertFileEnvVar(t, deployment, deploymentName)
+	}
+}
+
+func TestZyncReconciler_CABundleVolumeMount_NoCAToCA(t *testing.T) {
+	const testNamespace = "operator-unittest"
+	ctx := context.TODO()
+
+	apimanager := testZyncAPIManagerCreator(nil, nil)
+
+	objs := []runtime.Object{apimanager, testZyncSecret(), testCABundleConfigMap("my-ca-bundle", testNamespace)}
+
+	s := setupScheme(t)
+	baseLogicReconciler, cl := setupTestBaseReconciler(ctx, s, apimanager, objs)
+	zyncReconciler := NewZyncReconciler(baseLogicReconciler, true)
+
+	// Phase 1: create deployments WITHOUT CA mount
+	if _, err := zyncReconciler.Reconcile(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Assert phase 1: CA mount must be absent before transition
+	for _, deploymentName := range []string{component.ZyncName, component.ZyncQueDeploymentName} {
+		deployment := getDeployment(t, cl, deploymentName, testNamespace)
+		if hasVolumeMount(deployment.Spec.Template.Spec.Containers, component.ZyncCABundleVolumeName) {
+			t.Fatalf("deployment %s: expected CA bundle mount to be absent before transition", deploymentName)
+		}
+	}
+
+	// Transition: add CA ref
+	apimanager.Spec.Zync.CustomCABundleConfigMapRef = &v1.LocalObjectReference{Name: "my-ca-bundle"}
+
+	// Phase 2: update deployments
+	if _, err := zyncReconciler.Reconcile(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Assert phase 2: CA mount present, ConfigMap volume wired, SSL_CERT_FILE set
+	for _, deploymentName := range []string{component.ZyncName, component.ZyncQueDeploymentName} {
+		deployment := getDeployment(t, cl, deploymentName, testNamespace)
+		if !hasVolumeMount(deployment.Spec.Template.Spec.Containers, component.ZyncCABundleVolumeName) {
+			t.Errorf("deployment %s: expected CA bundle mount to be present after addition", deploymentName)
+		}
+		assertPodHasConfigMapVolume(t, deployment, deploymentName, component.ZyncCABundleVolumeName, "my-ca-bundle")
+		assertContainersHaveSSLCertFileEnvVar(t, deployment, deploymentName, component.ZyncCABundleMountPath+"/"+helper.CABundleKey)
+	}
+}
+
 func TestReconcileBeforeSystemApp(t *testing.T) {
 	var (
 		namespace = "operator-unittest"

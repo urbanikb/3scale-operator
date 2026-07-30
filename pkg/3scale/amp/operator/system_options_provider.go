@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	appscommon "github.com/3scale/3scale-operator/apis/apps"
@@ -76,6 +78,11 @@ func (s *SystemOptionsProvider) GetSystemOptions() (*component.SystemOptions, er
 	s.options.ZyncEnabled = s.apimanager.IsZyncEnabled()
 
 	s.options.Namespace = s.namespace
+
+	err = s.setSystemCustomCABundle()
+	if err != nil {
+		return nil, err
+	}
 
 	err = s.options.Validate()
 	if err != nil {
@@ -688,4 +695,24 @@ func (s *SystemOptionsProvider) setSystemRedisTLSEnabled() {
 
 func (s *SystemOptionsProvider) setBackendRedisTLSEnabled() {
 	s.options.BackendRedisTLS.Enabled = s.apimanager.IsBackendRedisTLSEnabled()
+}
+
+func (s *SystemOptionsProvider) setSystemCustomCABundle() error {
+	if s.apimanager.Spec.System.CustomCABundleConfigMapRef == nil {
+		return nil
+	}
+
+	fldPath := field.NewPath("spec").Child("system").Child("customCABundleConfigMapRef")
+	nn := types.NamespacedName{
+		Name:      s.apimanager.Spec.System.CustomCABundleConfigMapRef.Name,
+		Namespace: s.namespace,
+	}
+	cm, err := helper.ValidateCABundleConfigMap(nn, s.client)
+	if err != nil {
+		fldErr := field.ErrorList{field.Invalid(fldPath, s.apimanager.Spec.System.CustomCABundleConfigMapRef, err.Error())}
+		return fldErr.ToAggregate()
+	}
+
+	s.options.SystemCustomCABundleConfigMap = cm
+	return nil
 }

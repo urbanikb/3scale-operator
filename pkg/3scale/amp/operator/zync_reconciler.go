@@ -91,6 +91,7 @@ func (r *ZyncReconciler) Reconcile() (reconcile.Result, error) {
 		reconcilers.DeploymentPodInitContainerImageMutator,
 		reconcilers.DeploymentPodInitContainerMutator,
 		zyncDatabaseTLSEnvVarMutator,
+		zyncCABundleEnvVarMutator,
 		zyncDeploymentVolumesMutator,
 		zyncDeploymentInitContainerVolumeMountsMutator,
 		zyncDeploymentContainerVolumeMountsMutator,
@@ -121,6 +122,7 @@ func (r *ZyncReconciler) Reconcile() (reconcile.Result, error) {
 		reconcilers.DeploymentPodContainerImageMutator,
 		reconcilers.DeploymentPodInitContainerMutator,
 		zyncDatabaseTLSEnvVarMutator,
+		zyncCABundleEnvVarMutator,
 		zyncDeploymentVolumesMutator,
 		zyncDeploymentInitContainerVolumeMountsMutator,
 		zyncDeploymentContainerVolumeMountsMutator,
@@ -161,6 +163,7 @@ func (r *ZyncReconciler) Reconcile() (reconcile.Result, error) {
 			reconcilers.DeploymentPodTemplateAnnotationsMutator,
 			reconcilers.DeploymentPodContainerImageMutator,
 			zyncDatabaseTLSEnvVarMutator,
+			zyncCABundleEnvVarMutator,
 		)
 		err = r.ReconcileDeployment(zync.DatabaseDeployment(ampImages.Options.ZyncDatabasePostgreSQLImage), zyncDBDMutator)
 		if err != nil {
@@ -405,10 +408,15 @@ func zyncDatabaseTLSEnvVarMutator(desired, existing *k8sappsv1.Deployment) (bool
 	return changed, nil
 }
 
+func zyncCABundleEnvVarMutator(desired, existing *k8sappsv1.Deployment) (bool, error) {
+	return reconcilers.DeploymentEnvVarReconciler(desired, existing, "SSL_CERT_FILE"), nil
+}
+
 func zyncDeploymentVolumesMutator(desired, existing *k8sappsv1.Deployment) (bool, error) {
 	volumeNames := []string{
 		"tls-secret",
 		"writable-tls",
+		component.ZyncCABundleVolumeName,
 	}
 
 	return reconcilers.WeakDeploymentVolumesMutator(desired, existing, volumeNames)
@@ -426,6 +434,7 @@ func zyncDeploymentInitContainerVolumeMountsMutator(desired, existing *k8sappsv1
 func zyncDeploymentContainerVolumeMountsMutator(desired, existing *k8sappsv1.Deployment) (bool, error) {
 	volumeNames := []string{
 		"writable-tls",
+		component.ZyncCABundleVolumeName,
 	}
 	return reconcilers.WeakDeploymentContainerVolumeMountsMutator(desired, existing, volumeNames)
 }

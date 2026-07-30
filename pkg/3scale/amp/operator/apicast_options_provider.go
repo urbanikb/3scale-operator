@@ -118,6 +118,11 @@ func (a *ApicastOptionsProvider) GetApicastOptions() (*component.ApicastOptions,
 
 	a.setProxyConfigurations()
 
+	err = a.setApicastCustomCABundle()
+	if err != nil {
+		return nil, err
+	}
+
 	err = a.apicastOptions.Validate()
 	if err != nil {
 		return nil, fmt.Errorf("GetApicastOptions validating: %w", err)
@@ -622,4 +627,24 @@ func (a *ApicastOptionsProvider) getOpenTelemetryProductionConfig(ctx context.Co
 	res.ConfigFile = path.Join(component.OpentelemetryConfigMountBasePath, secretKeys[0])
 
 	return res, nil
+}
+
+func (a *ApicastOptionsProvider) setApicastCustomCABundle() error {
+	if a.apimanager.Spec.Apicast.CustomCABundleConfigMapRef == nil {
+		return nil
+	}
+
+	fldPath := field.NewPath("spec").Child("apicast").Child("customCABundleConfigMapRef")
+	nn := types.NamespacedName{
+		Name:      a.apimanager.Spec.Apicast.CustomCABundleConfigMapRef.Name,
+		Namespace: a.apimanager.Namespace,
+	}
+	cm, err := helper.ValidateCABundleConfigMap(nn, a.client)
+	if err != nil {
+		fldErr := field.ErrorList{field.Invalid(fldPath, a.apimanager.Spec.Apicast.CustomCABundleConfigMapRef, err.Error())}
+		return fldErr.ToAggregate()
+	}
+
+	a.apicastOptions.ApicastCustomCABundleConfigMap = cm
+	return nil
 }

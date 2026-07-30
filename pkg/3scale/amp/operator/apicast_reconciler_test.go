@@ -1667,3 +1667,153 @@ func multiKeyOtlpSecret() *v1.Secret {
 		},
 	}
 }
+
+func TestApicastReconciler_CABundleVolumeMount(t *testing.T) {
+	const testNamespace = "operator-unittest"
+	ctx := context.TODO()
+
+	tests := []struct {
+		name              string
+		setupCR           func(*appsv1alpha1.APIManager)
+		additionalObjects []runtime.Object
+		assert            func(*testing.T, k8sclient.Client)
+	}{
+		{
+			name:    "NoCARefs",
+			setupCR: func(*appsv1alpha1.APIManager) {},
+			assert: func(t *testing.T, cl k8sclient.Client) {
+				for _, deploymentName := range []string{component.ApicastStagingName, component.ApicastProductionName} {
+					deployment := getDeployment(t, cl, deploymentName, testNamespace)
+					if hasVolumeMount(deployment.Spec.Template.Spec.Containers, component.ApicastCABundleVolumeName) {
+						t.Errorf("deployment %s: expected CA bundle mount to be absent", deploymentName)
+					}
+				}
+			},
+		},
+		{
+			name: "WithApicastCARef",
+			setupCR: func(apimanager *appsv1alpha1.APIManager) {
+				apimanager.Spec.Apicast.CustomCABundleConfigMapRef = &v1.LocalObjectReference{Name: "my-ca-bundle"}
+			},
+			additionalObjects: []runtime.Object{testCABundleConfigMap("my-ca-bundle", testNamespace)},
+			assert: func(t *testing.T, cl k8sclient.Client) {
+				for _, deploymentName := range []string{component.ApicastStagingName, component.ApicastProductionName} {
+					deployment := getDeployment(t, cl, deploymentName, testNamespace)
+					if !hasVolumeMount(deployment.Spec.Template.Spec.Containers, component.ApicastCABundleVolumeName) {
+						t.Errorf("deployment %s: expected CA bundle mount to be present", deploymentName)
+					}
+					assertPodHasConfigMapVolume(t, deployment, deploymentName, component.ApicastCABundleVolumeName, "my-ca-bundle")
+					assertContainersHaveSSLCertFileEnvVar(t, deployment, deploymentName, component.ApicastCABundleMountPath+"/"+helper.CABundleKey)
+				}
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(subT *testing.T) {
+			apimanager := testApicastAPIManagerCreator(nil, nil)
+			tc.setupCR(apimanager)
+
+			objs := []runtime.Object{apimanager}
+			objs = append(objs, tc.additionalObjects...)
+
+			s := setupScheme(subT)
+			baseLogicReconciler, cl := setupTestBaseReconciler(ctx, s, apimanager, objs)
+			apicastReconciler := NewApicastReconciler(baseLogicReconciler)
+			if _, err := apicastReconciler.Reconcile(); err != nil {
+				subT.Fatal(err)
+			}
+
+			tc.assert(subT, cl)
+		})
+	}
+}
+
+func TestApicastReconciler_CABundleVolumeMount_CAToNoCA(t *testing.T) {
+	const testNamespace = "operator-unittest"
+	ctx := context.TODO()
+
+	apimanager := testApicastAPIManagerCreator(nil, nil)
+	apimanager.Spec.Apicast.CustomCABundleConfigMapRef = &v1.LocalObjectReference{Name: "my-ca-bundle"}
+
+	objs := []runtime.Object{apimanager, testCABundleConfigMap("my-ca-bundle", testNamespace)}
+
+	s := setupScheme(t)
+	baseLogicReconciler, cl := setupTestBaseReconciler(ctx, s, apimanager, objs)
+	apicastReconciler := NewApicastReconciler(baseLogicReconciler)
+
+	// Phase 1: create deployments WITH CA mount
+	if _, err := apicastReconciler.Reconcile(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Assert phase 1: CA mount must be present before transition
+	for _, deploymentName := range []string{component.ApicastStagingName, component.ApicastProductionName} {
+		deployment := getDeployment(t, cl, deploymentName, testNamespace)
+		if !hasVolumeMount(deployment.Spec.Template.Spec.Containers, component.ApicastCABundleVolumeName) {
+			t.Fatalf("deployment %s: expected CA bundle mount to be present before transition", deploymentName)
+		}
+	}
+
+	// Transition: remove CA ref
+	apimanager.Spec.Apicast.CustomCABundleConfigMapRef = nil
+
+	// Phase 2: update deployments
+	if _, err := apicastReconciler.Reconcile(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Assert phase 2: CA mount, volume, and SSL_CERT_FILE must all be absent after removal
+	for _, deploymentName := range []string{component.ApicastStagingName, component.ApicastProductionName} {
+		deployment := getDeployment(t, cl, deploymentName, testNamespace)
+		if hasVolumeMount(deployment.Spec.Template.Spec.Containers, component.ApicastCABundleVolumeName) {
+			t.Errorf("deployment %s: expected CA bundle mount to be absent after removal", deploymentName)
+		}
+		assertPodLacksVolume(t, deployment, deploymentName, component.ApicastCABundleVolumeName)
+		assertContainersLackSSLCertFileEnvVar(t, deployment, deploymentName)
+	}
+}
+
+func TestApicastReconciler_CABundleVolumeMount_NoCAToCA(t *testing.T) {
+	const testNamespace = "operator-unittest"
+	ctx := context.TODO()
+
+	apimanager := testApicastAPIManagerCreator(nil, nil)
+
+	objs := []runtime.Object{apimanager, testCABundleConfigMap("my-ca-bundle", testNamespace)}
+
+	s := setupScheme(t)
+	baseLogicReconciler, cl := setupTestBaseReconciler(ctx, s, apimanager, objs)
+	apicastReconciler := NewApicastReconciler(baseLogicReconciler)
+
+	// Phase 1: create deployments WITHOUT CA mount
+	if _, err := apicastReconciler.Reconcile(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Assert phase 1: CA mount must be absent before transition
+	for _, deploymentName := range []string{component.ApicastStagingName, component.ApicastProductionName} {
+		deployment := getDeployment(t, cl, deploymentName, testNamespace)
+		if hasVolumeMount(deployment.Spec.Template.Spec.Containers, component.ApicastCABundleVolumeName) {
+			t.Fatalf("deployment %s: expected CA bundle mount to be absent before transition", deploymentName)
+		}
+	}
+
+	// Transition: add CA ref
+	apimanager.Spec.Apicast.CustomCABundleConfigMapRef = &v1.LocalObjectReference{Name: "my-ca-bundle"}
+
+	// Phase 2: update deployments
+	if _, err := apicastReconciler.Reconcile(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Assert phase 2: CA mount present, ConfigMap volume wired, SSL_CERT_FILE set
+	for _, deploymentName := range []string{component.ApicastStagingName, component.ApicastProductionName} {
+		deployment := getDeployment(t, cl, deploymentName, testNamespace)
+		if !hasVolumeMount(deployment.Spec.Template.Spec.Containers, component.ApicastCABundleVolumeName) {
+			t.Errorf("deployment %s: expected CA bundle mount to be present after addition", deploymentName)
+		}
+		assertPodHasConfigMapVolume(t, deployment, deploymentName, component.ApicastCABundleVolumeName, "my-ca-bundle")
+		assertContainersHaveSSLCertFileEnvVar(t, deployment, deploymentName, component.ApicastCABundleMountPath+"/"+helper.CABundleKey)
+	}
+}
