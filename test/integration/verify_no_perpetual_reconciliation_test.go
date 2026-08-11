@@ -3,15 +3,10 @@ package integration
 import (
 	"fmt"
 	"sort"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
-
-// settlingPeriod is the time to wait after the synthetic update is reconciled
-// to confirm no further updates occur.
-const settlingPeriod = 30 * time.Second
 
 // verifyNoDeploymentUpdates asserts that the reconcile counter recorded exactly
 // the expected number of deployment updates, then resets the counter so the
