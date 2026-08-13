@@ -2,7 +2,7 @@ SHELL := /bin/bash
 # Current Operator version
 VERSION ?= 0.0.0
 # Current Threescale version
-THREESCALE_VERSION ?= 2.16
+THREESCALE_VERSION ?= 2.99
 
 # Options for 'bundle-build'
 ifneq ($(origin CHANNELS), undefined)
