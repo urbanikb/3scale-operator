@@ -1014,6 +1014,8 @@ Whenever a controller reconciles an object it creates a new porta client to make
 * ProxyConfigPromote
 * Tenant
 
+For production environments where the 3scale API is served by a private or self-signed CA that is not in the operator's system trust store, configure a custom CA bundle instead of disabling certificate verification. See [Configuring a Custom CA Bundle](operator-ca-bundle.md).
+
 #### Disabling zync route generation or zync entirely
 If you need to disable zync entirely, this includes removing zync deployment and associated with deployment resources, you can do so by adding a new flag to APIManager:
 
